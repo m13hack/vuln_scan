@@ -3,61 +3,60 @@ import os
 import subprocess
 from fpdf import FPDF
 
-
 def collect_system_info():
-    print("[+] Collecting system-level information...")
-    
+    print("[+] Collecting system-level information...\n")
+
     # Get OS Info
-    os_info = subprocess.run(["wmic", "os", "get", "Caption,CSDVersion,OSArchitecture"], capture_output=True, text=True)
-    print("OS Info:", os_info.stdout)
-    
+    os_info = subprocess.run(["systeminfo"], capture_output=True, text=True)
+    print("OS Information:\n" + os_info.stdout)
+
     # Get Installed Hotfixes
     hotfixes = subprocess.run(["wmic", "qfe", "list", "brief"], capture_output=True, text=True)
-    print("Installed Hotfixes:", hotfixes.stdout)
+    print("\nInstalled Hotfixes:\n" + hotfixes.stdout)
 
     # Get Installed Products
     installed_products = subprocess.run(["wmic", "product", "get", "name,version"], capture_output=True, text=True)
-    print("Installed Products:", installed_products.stdout)
+    print("\nInstalled Products:\n" + installed_products.stdout)
 
     # Get Windows Defender Status
     defender_status = subprocess.run(["powershell", "Get-MpComputerStatus"], capture_output=True, text=True)
-    print("Windows Defender Status:", defender_status.stdout)
-    
+    print("\nWindows Defender Status:\n" + defender_status.stdout)
+
     return {
-        "OS_Info": os_info.stdout,
-        "Installed_Hotfixes": hotfixes.stdout,
-        "Installed_Products": installed_products.stdout,
-        "Defender_Status": defender_status.stdout
+        "OS Information": os_info.stdout,
+        "Installed Hotfixes": hotfixes.stdout,
+        "Installed Products": installed_products.stdout,
+        "Windows Defender Status": defender_status.stdout
     }
 
 def collect_network_info():
-    print("[+] Collecting network-level information...")
+    print("[+] Collecting network-level information...\n")
 
     # Get ARP table
     arp_table = subprocess.run(["arp", "-a"], capture_output=True, text=True)
-    print("ARP Table:", arp_table.stdout)
+    print("ARP Table:\n" + arp_table.stdout)
 
     # Get current network connections (TCP and UDP)
     netstat = subprocess.run(["netstat", "-an"], capture_output=True, text=True)
-    print("Active Connections:", netstat.stdout)
+    print("\nActive Connections:\n" + netstat.stdout)
 
     # Get network profiles
     network_profiles = subprocess.run(["netsh", "wlan", "show", "profiles"], capture_output=True, text=True)
-    print("Network Profiles:", network_profiles.stdout)
+    print("\nNetwork Profiles:\n" + network_profiles.stdout)
 
     # List Open Ports (Using Powershell)
     open_ports = subprocess.run(["powershell", "Get-NetTCPConnection"], capture_output=True, text=True)
-    print("Open Ports:", open_ports.stdout)
-    
+    print("\nOpen Ports:\n" + open_ports.stdout)
+
     return {
-        "ARP_Table": arp_table.stdout,
-        "Active_Connections": netstat.stdout,
-        "Network_Profiles": network_profiles.stdout,
-        "Open_Ports": open_ports.stdout
+        "ARP Table": arp_table.stdout,
+        "Active Connections": netstat.stdout,
+        "Network Profiles": network_profiles.stdout,
+        "Open Ports": open_ports.stdout
     }
 
 def search_exploits():
-    print("[+] Searching for open-source exploits...")
+    print("[+] Searching for open-source exploits...\n")
     
     # Placeholder for actual exploit search
     # You can implement API calls to sources like ExploitDB or NVD
@@ -81,17 +80,17 @@ def generate_report(output_format, report_path, system_data, network_data, explo
         # Add System Information
         pdf.cell(200, 10, txt="System Information", ln=True)
         for key, value in system_data.items():
-            pdf.cell(200, 10, txt=f"{key}: {value}", ln=True)
+            pdf.multi_cell(0, 10, txt=f"{key}:\n{value}\n")
         
         # Add Network Information
         pdf.cell(200, 10, txt="Network Information", ln=True)
         for key, value in network_data.items():
-            pdf.cell(200, 10, txt=f"{key}: {value}", ln=True)
+            pdf.multi_cell(0, 10, txt=f"{key}:\n{value}\n")
         
         # Add Exploit Information
         pdf.cell(200, 10, txt="Exploit Information", ln=True)
         for exploit in exploit_data:
-            pdf.cell(200, 10, txt=exploit, ln=True)
+            pdf.cell(200, 10, txt=f"{exploit}", ln=True)
 
         pdf_output_path = os.path.join(report_path, "vulnerability_report.pdf")
         pdf.output(pdf_output_path)
@@ -105,12 +104,12 @@ def generate_report(output_format, report_path, system_data, network_data, explo
             # Add System Information
             f.write("<h2>System Information</h2>")
             for key, value in system_data.items():
-                f.write(f"<p>{key}: {value}</p>")
+                f.write(f"<h3>{key}</h3><pre>{value}</pre>")
             
             # Add Network Information
             f.write("<h2>Network Information</h2>")
             for key, value in network_data.items():
-                f.write(f"<p>{key}: {value}</p>")
+                f.write(f"<h3>{key}</h3><pre>{value}</pre>")
             
             # Add Exploit Information
             f.write("<h2>Exploit Information</h2>")
@@ -122,7 +121,6 @@ def generate_report(output_format, report_path, system_data, network_data, explo
     
     else:
         print("[!] Invalid output format specified. Please choose either 'pdf' or 'html'.")
-
 
 def cli():
     parser = argparse.ArgumentParser(description="Windows Vulnerability Scanner CLI Tool")

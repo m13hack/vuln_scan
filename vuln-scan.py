@@ -1,169 +1,170 @@
-import argparse
 import os
 import subprocess
+import wmi
 from fpdf import FPDF
+import datetime
+import sys
+import traceback
+
+def run_command(command, capture_output=True):
+    """Run a command and capture its output or return the error."""
+    try:
+        result = subprocess.check_output(command, shell=True, text=True)
+        return result
+    except subprocess.CalledProcessError as e:
+        return f"Error executing command '{command}': {e}"
+    except Exception as e:
+        return f"An unexpected error occurred: {e}"
 
 def collect_system_info():
-    print("[+] Collecting system-level information...\n")
+    """Collects system information and returns a dictionary with the results."""
+    info = {}
+    
+    # Basic OS info
+    info['OS'] = run_command('systeminfo')
 
-    # Get OS Info
-    os_info = subprocess.run(["systeminfo"], capture_output=True, text=True)
-    print("OS Information:\n" + os_info.stdout)
-
-    # Get Installed Hotfixes
-    hotfixes = subprocess.run(["wmic", "qfe", "list", "brief"], capture_output=True, text=True)
-    print("\nInstalled Hotfixes:\n" + hotfixes.stdout)
-
-    # Get Installed Products
-    installed_products = subprocess.run(["wmic", "product", "get", "name,version"], capture_output=True, text=True)
-    print("\nInstalled Products:\n" + installed_products.stdout)
-
-    # Get Windows Defender Status
-    defender_status = subprocess.run(["powershell", "Get-MpComputerStatus"], capture_output=True, text=True)
-    print("\nWindows Defender Status:\n" + defender_status.stdout)
-
-    return {
-        "OS Information": os_info.stdout,
-        "Installed Hotfixes": hotfixes.stdout,
-        "Installed Products": installed_products.stdout,
-        "Windows Defender Status": defender_status.stdout
-    }
+    # .NET versions
+    info['.NET Versions'] = run_command('reg query "HKLM\\SOFTWARE\\Microsoft\\NET Framework Setup\\NDP" /s /v Version')
+    
+    # Antivirus info
+    try:
+        c = wmi.WMI()
+        info['Antivirus'] = [a.name for a in c.Win32_Product()]
+    except Exception as e:
+        info['Antivirus'] = str(e)
+    
+    # Audit policy settings
+    info['Audit Policy Settings'] = run_command('auditpol /get /category:*')
+    
+    # Auto-run executables
+    info['Auto-run Executables'] = run_command('reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"')
+    
+    # Firewall rules
+    info['Firewall Rules'] = run_command('netsh advfirewall firewall show rule name=all')
+    
+    # Windows Defender settings
+    info['Windows Defender Settings'] = run_command('powershell Get-MpPreference')
+    
+    # Certificates
+    info['Certificates'] = run_command('certutil -store my')
+    
+    # Environment Variables
+    info['Environment Variables'] = run_command('set')
+    
+    # File Information
+    info['Files Information'] = run_command('dir /s')
+    
+    # Installed Hotfixes
+    info['Installed Hotfixes'] = run_command('wmic qfe list')
+    
+    # Installed Products
+    info['Installed Products'] = run_command('wmic product get name')
+    
+    # Local Group Policy settings
+    info['Local Group Policy Settings'] = run_command('gpresult /r')
+    
+    # Local Groups/Users
+    local_groups = run_command('net localgroup')
+    local_users = run_command('net user')
+    info['Local Groups'] = local_groups
+    info['Local Users'] = local_users
+    
+    # Microsoft Updates
+    info['Microsoft Updates'] = run_command('wmic qfe list')
+    
+    # NTLM Authentication Settings
+    info['NTLM Authentication Settings'] = run_command('reg query "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa" /v LMCompatibilityLevel')
+    
+    # RDP Connections
+    info['RDP Connections'] = run_command('reg query "HKCU\\Software\\Microsoft\\Terminal Server Client\\Servers"')
+    
+    # Secure Boot Configuration
+    info['Secure Boot Configuration'] = run_command('powershell Get-SecureBootPolicy')
+    
+    # Sysmon Configuration
+    info['Sysmon Configuration'] = run_command('reg query "HKLM\\SYSTEM\\CurrentControlSet\\Services\\SysmonDrv"')
+    
+    # UAC Policies
+    info['UAC Policies'] = run_command('reg query "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System" /v EnableLUA')
+    
+    # PowerShell History
+    info['PowerShell History'] = run_command('powershell Get-Content (Get-PSReadlineOption).HistorySavePath')
+    
+    return info
 
 def collect_network_info():
-    print("[+] Collecting network-level information...\n")
-
-    # Get ARP table
-    arp_table = subprocess.run(["arp", "-a"], capture_output=True, text=True)
-    print("ARP Table:\n" + arp_table.stdout)
-
-    # Get current network connections (TCP and UDP)
-    netstat = subprocess.run(["netstat", "-an"], capture_output=True, text=True)
-    print("\nActive Connections:\n" + netstat.stdout)
-
-    # Get network profiles
-    network_profiles = subprocess.run(["netsh", "wlan", "show", "profiles"], capture_output=True, text=True)
-    print("\nNetwork Profiles:\n" + network_profiles.stdout)
-
-    # List Open Ports (Using Powershell)
-    open_ports = subprocess.run(["powershell", "Get-NetTCPConnection"], capture_output=True, text=True)
-    print("\nOpen Ports:\n" + open_ports.stdout)
-
-    return {
-        "ARP Table": arp_table.stdout,
-        "Active Connections": netstat.stdout,
-        "Network Profiles": network_profiles.stdout,
-        "Open Ports": open_ports.stdout
-    }
-
-def search_exploits():
-    print("[+] Searching for open-source exploits...\n")
+    """Collects network information and returns a dictionary with the results."""
+    info = {}
     
-    # Placeholder for actual exploit search
-    # You can implement API calls to sources like ExploitDB or NVD
-    exploits = [
-        "Exploit 1: Remote Code Execution (CVE-2021-12345)",
-        "Exploit 2: Privilege Escalation (CVE-2022-54321)"
-    ]
+    # ARP Table
+    info['ARP Table'] = run_command('arp -a')
     
-    for exploit in exploits:
-        print(exploit)
+    # TCP/UDP connections
+    info['TCP/UDP Connections'] = run_command('netstat -ano')
     
-    return exploits
-
-def generate_report(output_format, report_path, system_data, network_data, exploit_data):
-    if output_format == "pdf":
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", size=12)
-        pdf.cell(200, 10, txt="Windows Vulnerability Report", ln=True, align="C")
-        
-        # Add System Information
-        pdf.cell(200, 10, txt="System Information", ln=True)
-        for key, value in system_data.items():
-            pdf.multi_cell(0, 10, txt=f"{key}:\n{value}\n")
-        
-        # Add Network Information
-        pdf.cell(200, 10, txt="Network Information", ln=True)
-        for key, value in network_data.items():
-            pdf.multi_cell(0, 10, txt=f"{key}:\n{value}\n")
-        
-        # Add Exploit Information
-        pdf.cell(200, 10, txt="Exploit Information", ln=True)
-        for exploit in exploit_data:
-            pdf.cell(200, 10, txt=f"{exploit}", ln=True)
-
-        pdf_output_path = os.path.join(report_path, "vulnerability_report.pdf")
-        pdf.output(pdf_output_path)
-        print(f"[+] PDF report generated at {pdf_output_path}")
+    # Network Shares
+    info['Network Shares'] = run_command('net share')
     
-    elif output_format == "html":
-        html_output_path = os.path.join(report_path, "vulnerability_report.html")
-        with open(html_output_path, 'w') as f:
-            f.write("<html><body><h1>Windows Vulnerability Report</h1>")
-            
-            # Add System Information
-            f.write("<h2>System Information</h2>")
-            for key, value in system_data.items():
-                f.write(f"<h3>{key}</h3><pre>{value}</pre>")
-            
-            # Add Network Information
-            f.write("<h2>Network Information</h2>")
-            for key, value in network_data.items():
-                f.write(f"<h3>{key}</h3><pre>{value}</pre>")
-            
-            # Add Exploit Information
-            f.write("<h2>Exploit Information</h2>")
-            for exploit in exploit_data:
-                f.write(f"<p>{exploit}</p>")
+    return info
 
-            f.write("</body></html>")
-        print(f"[+] HTML report generated at {html_output_path}")
+def generate_report(system_info, network_info):
+    """Generates a PDF report from the collected information."""
+    pdf = FPDF()
+    pdf.add_page()
     
-    else:
-        print("[!] Invalid output format specified. Please choose either 'pdf' or 'html'.")
-
-def cli():
-    parser = argparse.ArgumentParser(description="Windows Vulnerability Scanner CLI Tool")
-
-    # Add arguments for scan options
-    parser.add_argument(
-        '-s', '--system', action='store_true', help='Scan system-level vulnerabilities'
-    )
-    parser.add_argument(
-        '-n', '--network', action='store_true', help='Scan network-level vulnerabilities'
-    )
-    parser.add_argument(
-        '-e', '--exploit', action='store_true', help='Search for available open-source exploits'
-    )
-    parser.add_argument(
-        '-o', '--output', type=str, help='Specify output file format (pdf or html)', default="html"
-    )
-    parser.add_argument(
-        '-r', '--report', type=str, help='Path to save the report file', default=os.getcwd()
-    )
-    parser.add_argument(
-        '--all', action='store_true', help='Run all scans (system, network, and exploit search)'
-    )
+    pdf.set_font("Arial", size=14)
+    pdf.cell(200, 10, txt="Windows System & Network Vulnerability Report", ln=True, align="C")
+    pdf.ln(10)
     
-    # Parse arguments from CLI
-    args = parser.parse_args()
-
-    system_data, network_data, exploit_data = {}, {}, []
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt="System Information", ln=True, align="L")
+    pdf.ln(5)
     
-    # Execute corresponding actions
-    if args.system:
-        system_data = collect_system_info()
-    if args.network:
-        network_data = collect_network_info()
-    if args.exploit:
-        exploit_data = search_exploits()
-    if args.all:
-        system_data = collect_system_info()
-        network_data = collect_network_info()
-        exploit_data = search_exploits()
-
-    # Generate the report
-    generate_report(args.output, args.report, system_data, network_data, exploit_data)
+    for key, value in system_info.items():
+        pdf.set_font("Arial", size=10, style='B')
+        pdf.cell(0, 10, txt=f"{key}:", ln=True, align="L")
+        pdf.set_font("Arial", size=10)
+        pdf.multi_cell(0, 10, value)
+        pdf.ln()
+    
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt="Network Information", ln=True, align="L")
+    pdf.ln(5)
+    
+    for key, value in network_info.items():
+        pdf.set_font("Arial", size=10, style='B')
+        pdf.cell(0, 10, txt=f"{key}:", ln=True, align="L")
+        pdf.set_font("Arial", size=10)
+        pdf.multi_cell(0, 10, value)
+        pdf.ln()
+    
+    pdf_file = f"vulnerability_report_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    try:
+        pdf.output(pdf_file)
+        print(f"[+] PDF report generated at {pdf_file}")
+    except Exception as e:
+        print(f"Error generating PDF report: {e}")
 
 if __name__ == "__main__":
-    cli()
+    print("[+] Collecting system information...")
+    try:
+        system_info = collect_system_info()
+    except Exception as e:
+        print(f"Error collecting system information: {e}")
+        sys.exit(1)
+    
+    print("[+] Collecting network information...")
+    try:
+        network_info = collect_network_info()
+    except Exception as e:
+        print(f"Error collecting network information: {e}")
+        sys.exit(1)
+    
+    print("[+] Generating report...")
+    try:
+        generate_report(system_info, network_info)
+    except Exception as e:
+        print(f"Error generating report: {e}")
+        sys.exit(1)
+    
+    print("[+] Report generation complete!")

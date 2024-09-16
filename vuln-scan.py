@@ -6,29 +6,15 @@ import sys
 import traceback
 import time
 
-def run_command(command, timeout=60, capture_output=True):
+def run_command(command, timeout=60):
     """Run a command and capture its output or return the error with a timeout."""
     try:
-        start_time = time.time()
-        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
-        while True:
-            if process.poll() is not None:
-                # Command finished
-                output, error = process.communicate()
-                if error:
-                    return f"Error: {error}"
-                return output
-
-            # Check for timeout
-            if time.time() - start_time > timeout:
-                process.terminate()
-                return f"Command '{command}' timed out after {timeout} seconds."
-
-            time.sleep(1)  # Avoid CPU hogging by sleeping for 1 second
-
-    except subprocess.CalledProcessError as e:
-        return f"Error executing command '{command}': {e}"
+        result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=timeout)
+        if result.returncode != 0:
+            return f"Error: {result.stderr.strip()}"
+        return result.stdout.strip()
+    except subprocess.TimeoutExpired:
+        return f"Command '{command}' timed out after {timeout} seconds."
     except Exception as e:
         return f"An unexpected error occurred: {e}"
 
@@ -41,6 +27,9 @@ def collect_system_info():
 
     print("[+] Collecting .NET versions...")
     info['.NET Versions'] = run_command('reg query "HKLM\\SOFTWARE\\Microsoft\\NET Framework Setup\\NDP" /s /v Version', timeout=30)
+
+    print("[+] Collecting AMSI Providers...")
+    info['AMSI Providers'] = run_command('reg query "HKLM\\Software\\Microsoft\\AMSI\\Providers"', timeout=30)
 
     print("[+] Collecting antivirus information...")
     try:
@@ -113,11 +102,20 @@ def collect_network_info():
     print("[+] Collecting ARP table...")
     info['ARP Table'] = run_command('arp -a', timeout=30)
 
+    print("[+] Collecting DNS cache entries...")
+    info['DNS Cache'] = run_command('ipconfig /displaydns', timeout=30)
+
     print("[+] Collecting TCP/UDP connections...")
     info['TCP/UDP Connections'] = run_command('netstat -ano', timeout=30)
 
     print("[+] Collecting network shares...")
     info['Network Shares'] = run_command('net share', timeout=30)
+
+    print("[+] Collecting LLDP/CDP connections...")
+    info['LLDP/CDP Connections'] = run_command('powershell Get-NetLldpAgentSetting', timeout=30)
+
+    print("[+] Collecting open ports...")
+    info['Open Ports'] = run_command('netstat -an | findstr "LISTENING"', timeout=30)
 
     return info
 
@@ -158,26 +156,20 @@ def generate_html_report(system_info, network_info):
         <h2>System Information</h2>
     """
 
-    # Ensure all values are converted to strings and handle None values
     for key, value in system_info.items():
         if isinstance(value, list):
-            value = "\n".join([str(v) if v is not None else "No data available" for v in value])
+            value = "\n".join(value)
         elif value is None:
             value = "No data available"
-        else:
-            value = str(value)
         html_content += f"<h3>{key}:</h3><pre>{value}</pre>"
 
     html_content += "<h2>Network Information</h2>"
 
-    # Ensure all network values are converted to strings and handle None values
     for key, value in network_info.items():
         if isinstance(value, list):
-            value = "\n".join([str(v) if v is not None else "No data available" for v in value])
+            value = "\n".join(value)
         elif value is None:
             value = "No data available"
-        else:
-            value = str(value)
         html_content += f"<h3>{key}:</h3><pre>{value}</pre>"
 
     html_content += """
@@ -185,7 +177,6 @@ def generate_html_report(system_info, network_info):
     </html>
     """
 
-    # Save the HTML content to a file
     html_file = f"vulnerability_report_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
     try:
         with open(html_file, 'w') as f:

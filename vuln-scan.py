@@ -1,22 +1,34 @@
 import os
 import subprocess
 import wmi
-from fpdf import FPDF
 import datetime
 import sys
 import traceback
 import time
-import concurrent.futures
 
-def run_command(command, timeout=30):
-    """Run a command and capture its output with a timeout."""
+def run_command(command, timeout=60, capture_output=True):
+    """Run a command and capture its output or return the error with a timeout."""
     try:
-        result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=timeout)
-        if result.returncode != 0:
-            return f"Error: {result.stderr.strip()}"
-        return result.stdout.strip()
-    except subprocess.TimeoutExpired:
-        return f"Command '{command}' timed out after {timeout} seconds."
+        start_time = time.time()
+        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+        while True:
+            if process.poll() is not None:
+                # Command finished
+                output, error = process.communicate()
+                if error:
+                    return f"Error: {error}"
+                return output
+
+            # Check for timeout
+            if time.time() - start_time > timeout:
+                process.terminate()
+                return f"Command '{command}' timed out after {timeout} seconds."
+
+            time.sleep(1)  # Avoid CPU hogging by sleeping for 1 second
+
+    except subprocess.CalledProcessError as e:
+        return f"Error executing command '{command}': {e}"
     except Exception as e:
         return f"An unexpected error occurred: {e}"
 
@@ -24,45 +36,73 @@ def collect_system_info():
     """Collects system information and returns a dictionary with the results."""
     info = {}
 
-    commands = {
-        'OS': 'systeminfo',
-        '.NET Versions': 'reg query "HKLM\\SOFTWARE\\Microsoft\\NET Framework Setup\\NDP" /s /v Version',
-        'Audit Policy Settings': 'auditpol /get /category:*',
-        'Auto-run Executables': 'reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"',
-        'Firewall Rules': 'netsh advfirewall firewall show rule name=all',
-        'Windows Defender Settings': 'powershell Get-MpPreference',
-        'Certificates': 'certutil -store my',
-        'Environment Variables': 'set',
-        'Files Information': 'dir /s',
-        'Installed Hotfixes': 'wmic qfe list',
-        'Installed Products': 'wmic product get name',
-        'Local Group Policy Settings': 'gpresult /r',
-        'Local Groups': 'net localgroup',
-        'Local Users': 'net user',
-        'Microsoft Updates': 'wmic qfe list',
-        'NTLM Authentication Settings': 'reg query "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa" /v LMCompatibilityLevel',
-        'RDP Connections': 'reg query "HKCU\\Software\\Microsoft\\Terminal Server Client\\Servers"',
-        'Secure Boot Configuration': 'powershell Get-SecureBootPolicy',
-        'Sysmon Configuration': 'reg query "HKLM\\SYSTEM\\CurrentControlSet\\Services\\SysmonDrv"',
-        'UAC Policies': 'reg query "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System" /v EnableLUA',
-        'PowerShell History': 'powershell Get-Content (Get-PSReadlineOption).HistorySavePath'
-    }
+    print("[+] Collecting basic OS information...")
+    info['OS'] = run_command('systeminfo', timeout=30)
 
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        futures = {executor.submit(run_command, cmd): name for name, cmd in commands.items()}
-        for future in concurrent.futures.as_completed(futures):
-            name = futures[future]
-            try:
-                info[name] = future.result()
-            except Exception as e:
-                info[name] = f"Error collecting {name}: {e}"
+    print("[+] Collecting .NET versions...")
+    info['.NET Versions'] = run_command('reg query "HKLM\\SOFTWARE\\Microsoft\\NET Framework Setup\\NDP" /s /v Version', timeout=30)
 
     print("[+] Collecting antivirus information...")
     try:
         c = wmi.WMI()
-        info['Antivirus'] = ', '.join([a.name for a in c.Win32_Product()])
+        info['Antivirus'] = [a.name for a in c.Win32_Product()]
     except Exception as e:
         info['Antivirus'] = f"Error collecting antivirus info: {e}"
+
+    print("[+] Collecting audit policy settings...")
+    info['Audit Policy Settings'] = run_command('auditpol /get /category:*', timeout=30)
+
+    print("[+] Collecting auto-run executables...")
+    info['Auto-run Executables'] = run_command('reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"', timeout=30)
+
+    print("[+] Collecting firewall rules...")
+    info['Firewall Rules'] = run_command('netsh advfirewall firewall show rule name=all', timeout=60)
+
+    print("[+] Collecting Windows Defender settings...")
+    info['Windows Defender Settings'] = run_command('powershell Get-MpPreference', timeout=30)
+
+    print("[+] Collecting installed certificates...")
+    info['Certificates'] = run_command('certutil -store my', timeout=30)
+
+    print("[+] Collecting environment variables...")
+    info['Environment Variables'] = run_command('set', timeout=30)
+
+    print("[+] Collecting file information...")
+    info['Files Information'] = run_command('dir /s', timeout=60)
+
+    print("[+] Collecting installed hotfixes...")
+    info['Installed Hotfixes'] = run_command('wmic qfe list', timeout=30)
+
+    print("[+] Collecting installed products...")
+    info['Installed Products'] = run_command('wmic product get name', timeout=60)
+
+    print("[+] Collecting local group policy settings...")
+    info['Local Group Policy Settings'] = run_command('gpresult /r', timeout=30)
+
+    print("[+] Collecting local groups and users...")
+    info['Local Groups'] = run_command('net localgroup', timeout=30)
+    info['Local Users'] = run_command('net user', timeout=30)
+
+    print("[+] Collecting Microsoft updates...")
+    info['Microsoft Updates'] = run_command('wmic qfe list', timeout=30)
+
+    print("[+] Collecting NTLM authentication settings...")
+    info['NTLM Authentication Settings'] = run_command('reg query "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa" /v LMCompatibilityLevel', timeout=30)
+
+    print("[+] Collecting RDP connections...")
+    info['RDP Connections'] = run_command('reg query "HKCU\\Software\\Microsoft\\Terminal Server Client\\Servers"', timeout=30)
+
+    print("[+] Collecting secure boot configuration...")
+    info['Secure Boot Configuration'] = run_command('powershell Get-SecureBootPolicy', timeout=30)
+
+    print("[+] Collecting Sysmon configuration...")
+    info['Sysmon Configuration'] = run_command('reg query "HKLM\\SYSTEM\\CurrentControlSet\\Services\\SysmonDrv"', timeout=30)
+
+    print("[+] Collecting UAC policies...")
+    info['UAC Policies'] = run_command('reg query "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System" /v EnableLUA', timeout=30)
+
+    print("[+] Collecting PowerShell history...")
+    info['PowerShell History'] = run_command('powershell Get-Content (Get-PSReadlineOption).HistorySavePath', timeout=30)
 
     return info
 
@@ -70,54 +110,83 @@ def collect_network_info():
     """Collects network information and returns a dictionary with the results."""
     info = {}
 
-    commands = {
-        'ARP Table': 'arp -a',
-        'TCP/UDP Connections': 'netstat -ano',
-        'Network Shares': 'net share'
-    }
+    print("[+] Collecting ARP table...")
+    info['ARP Table'] = run_command('arp -a', timeout=30)
 
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        futures = {executor.submit(run_command, cmd): name for name, cmd in commands.items()}
-        for future in concurrent.futures.as_completed(futures):
-            name = futures[future]
-            try:
-                info[name] = future.result()
-            except Exception as e:
-                info[name] = f"Error collecting {name}: {e}"
+    print("[+] Collecting TCP/UDP connections...")
+    info['TCP/UDP Connections'] = run_command('netstat -ano', timeout=30)
+
+    print("[+] Collecting network shares...")
+    info['Network Shares'] = run_command('net share', timeout=30)
 
     return info
 
-def generate_report(system_info, network_info):
-    """Generates a PDF report from the collected information."""
-    pdf = FPDF()
-    pdf.add_page()
+def generate_html_report(system_info, network_info):
+    """Generates an HTML report from the collected information."""
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>System & Network Vulnerability Report</title>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                margin: 20px;
+                padding: 0;
+                background-color: #f4f4f4;
+            }}
+            h1 {{
+                text-align: center;
+                color: #333;
+            }}
+            h2 {{
+                color: #0056b3;
+            }}
+            pre {{
+                background-color: #eee;
+                padding: 10px;
+                border: 1px solid #ccc;
+                white-space: pre-wrap;
+                word-wrap: break-word;
+            }}
+        </style>
+    </head>
+    <body>
+        <h1>Windows System & Network Vulnerability Report</h1>
+        <h2>System Information</h2>
+    """
 
-    pdf.set_font("Arial", size=14)
-    pdf.cell(200, 10, txt="Windows System & Network Vulnerability Report", ln=True, align="C")
-    pdf.ln(10)
+    for key, value in system_info.items():
+        if isinstance(value, list):
+            value = "\n".join(value)  # Convert list to string if necessary
+        elif value is None:
+            value = "No data available"
+        html_content += f"<h3>{key}:</h3><pre>{value}</pre>"
 
-    def add_section(title, data):
-        """Helper to add sections to the PDF."""
-        pdf.set_font("Arial", size=12)
-        pdf.cell(200, 10, txt=title, ln=True, align="L")
-        pdf.ln(5)
+    html_content += "<h2>Network Information</h2>"
 
-        for key, value in data.items():
-            pdf.set_font("Arial", size=10, style='B')
-            pdf.cell(0, 10, txt=f"{key}:", ln=True, align="L")
-            pdf.set_font("Arial", size=10)
-            pdf.multi_cell(0, 10, value or "No data")
-            pdf.ln()
+    for key, value in network_info.items():
+        if isinstance(value, list):
+            value = "\n".join(value)  # Convert list to string if necessary
+        elif value is None:
+            value = "No data available"
+        html_content += f"<h3>{key}:</h3><pre>{value}</pre>"
 
-    add_section("System Information", system_info)
-    add_section("Network Information", network_info)
+    html_content += """
+    </body>
+    </html>
+    """
 
-    pdf_file = f"vulnerability_report_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    # Save the HTML content to a file
+    html_file = f"vulnerability_report_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
     try:
-        pdf.output(pdf_file)
-        print(f"[+] PDF report generated at {pdf_file}")
+        with open(html_file, 'w') as f:
+            f.write(html_content)
+        print(f"[+] HTML report generated at {html_file}")
     except Exception as e:
-        print(f"Error generating PDF report: {e}")
+        print(f"Error generating HTML report: {e}")
 
 if __name__ == "__main__":
     print("[+] Collecting system information...")
@@ -136,7 +205,7 @@ if __name__ == "__main__":
 
     print("[+] Generating report...")
     try:
-        generate_report(system_info, network_info)
+        generate_html_report(system_info, network_info)
     except Exception as e:
         print(f"Error generating report: {e}")
         sys.exit(1)

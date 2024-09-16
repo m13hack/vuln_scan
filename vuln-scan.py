@@ -158,20 +158,26 @@ def generate_html_report(system_info, network_info):
         <h2>System Information</h2>
     """
 
+    # Ensure all values are converted to strings and handle None values
     for key, value in system_info.items():
         if isinstance(value, list):
-            value = "\n".join(value)  # Convert list to string if necessary
+            value = "\n".join([str(v) if v is not None else "No data available" for v in value])
         elif value is None:
             value = "No data available"
+        else:
+            value = str(value)
         html_content += f"<h3>{key}:</h3><pre>{value}</pre>"
 
     html_content += "<h2>Network Information</h2>"
 
+    # Ensure all network values are converted to strings and handle None values
     for key, value in network_info.items():
         if isinstance(value, list):
-            value = "\n".join(value)  # Convert list to string if necessary
+            value = "\n".join([str(v) if v is not None else "No data available" for v in value])
         elif value is None:
             value = "No data available"
+        else:
+            value = str(value)
         html_content += f"<h3>{key}:</h3><pre>{value}</pre>"
 
     html_content += """

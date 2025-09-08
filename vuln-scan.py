@@ -4,7 +4,7 @@ import sqlite3
 import hashlib
 
 # 1. Hardcoded secret
-API_KEY = "12345678901abcsdef"  
+API_KEY = "12345678909abcsdef"  
 
 def insecure_login(user, password):
     # 2. SQL Injection (string concatenation instead of parameterized queries)
